@@ -1,5 +1,7 @@
 import os
 import streamlit as st
+import plotly.express as px
+import numpy as np
 from data_loader import DataLoader
 from data_analysis_service import DataAnalysisService
 
@@ -21,45 +23,50 @@ def process_data():
 
 
 def main():
-    st.set_page_config(page_title="Olist Logistics ROI", layout="wide")
-    st.title("📊 Dashboard de Sangramento Logístico - Olist")
+    st.set_page_config(page_title="Olist Logistics ROI", page_icon=":chart_with_upwards_trend:", layout="wide")
+    st.title("📊 Logistics Cost Leakage Dashboard - Olist")
+    st.subheader("Freight Cost Ratio by Brazilian State")
 
     data = process_data()
+    
+    with st.container(vertical_alignment="center"):
+        left_col, right_col = st.columns([1, 2])
+        with left_col:
+            min_pedidos = st.slider(
+                "Minimal number of order per State",
+                min_value=int(data["order_id"].min()),
+                max_value=int(data["order_id"].max()),
+                value=500,
+                step=50
+            )
 
-    min_pedidos = st.slider(
-        "Número Mínimo de Pedidos por Estado",
-        min_value=int(data["order_id"].min()),
-        max_value=int(data["order_id"].max()),
-        value=500,
-        step=50
-    )
+            filtered_data = data[data["order_id"] >= min_pedidos]
+            media_nacional = filtered_data["freight_ratio"].mean()
+            idx_estado_critico = filtered_data["freight_ratio"].idxmax()
+            estado_critico = filtered_data.loc[idx_estado_critico]
+            filtered_data['chart_color'] = np.where(filtered_data.index == idx_estado_critico, "","#196da7")
 
-    filtered_data = data[data["order_id"] >= min_pedidos]
+            st.metric(
+                label="📦 Média Nacional de Frete",
+                value=f"{media_nacional:.2%}"
+            )
 
-    media_nacional = filtered_data["freight_ratio"].mean()
-    idx_estado_critico = filtered_data["freight_ratio"].idxmax()
-    estado_critico = filtered_data.loc[idx_estado_critico]
-    nome_estado = idx_estado_critico
-    pior_ratio = estado_critico["freight_ratio"]
+            st.metric(
+                label="🚨 Estado Crítico (Pior Ratio)",
+                value=idx_estado_critico,
+                delta=f"{estado_critico['freight_ratio']:.2%}"
+            )
 
-    col1, col2 = st.columns(2)
-
-    with col1:
-        st.metric(
-            label="📦 Média Nacional de Frete",
-            value=f"{media_nacional:.2%}"
-        )
-
-    with col2:
-        st.metric(
-            label="🚨 Estado Crítico (Pior Ratio)",
-            value=nome_estado,
-            delta=f"{pior_ratio:.2%}"
-        )
-
-
-    st.bar_chart(filtered_data.sort_values(by="freight_ratio", ascending=False).head(10), y="freight_ratio", y_label="Média de Frete por Estado")
-    st.dataframe(filtered_data.sort_values(by="freight_ratio", ascending=False))
+        with right_col:
+            st.bar_chart(filtered_data.sort_values(by="freight_ratio", ascending=False).head(10), y="freight_ratio", y_label="Média de Frete por Estado", color='chart_color')
+    
+    with st.container(vertical_alignment="center"):
+        left_col, right_col = st.columns([1, 2])
+        with left_col:
+            st.plotly_chart(px.pie(filtered_data.reset_index(), values="freight_ratio", names="customer_state"))
+        
+        with right_col:
+            st.dataframe(filtered_data.sort_values(by="freight_ratio", ascending=False))
 
 if __name__ == "__main__":
     main()
